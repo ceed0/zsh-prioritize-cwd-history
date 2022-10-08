@@ -25,9 +25,8 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
 
-#--------------------------------------------------------------------#
-# Required History Options                                           #
-#--------------------------------------------------------------------#
+# Exit if history is disable
+[ -r "$HISTFILE" ] || return
 
 # We use timestamps as unique keys for commands in the history file
 setopt EXTENDED_HISTORY
@@ -35,11 +34,7 @@ setopt EXTENDED_HISTORY
 # We reload global history from $HISTFILE on directory change
 # Have to write to the file incrementally to avoid losing history on
 # directory change.
-setopt INC_APPEND_HISTORY
-
-#--------------------------------------------------------------------#
-# Global Config Variables                                            #
-#--------------------------------------------------------------------#
+setopt INC_APPEND_HISTORY_TIME
 
 ZSH_PRIORITIZE_CWD_HISTORY_DIR="$HOME/.zsh_prioritize_cwd_history"
 
@@ -47,45 +42,57 @@ ZSH_PRIORITIZE_CWD_HISTORY_DIR="$HOME/.zsh_prioritize_cwd_history"
 # Histrefs files store timestamp references to entries in HISTFILE   #
 #--------------------------------------------------------------------#
 
+# Use an appropriate md5 command (md5 is BSD, md5sum is GNU),
+# whichever is actually available
+zmodload zsh/parameter
+_zsh_prioritize_cwd_history_md5() {
+    if (( $+commands[md5] )); then
+        md5 -q
+    elif (( $+commands[md5sum] )); then
+        md5sum | cut -d ' ' -f 1
+    else
+        echo "zsh-prioritize-cwd-history: md5 or md5sum command required"
+        return 1
+    fi
+}
+
 # Prints to STDOUT the name of the histrefs file to use for current
 # working directory
 _zsh_prioritize_cwd_history_histrefs_for_cwd() {
-	local md5=$(echo "${PWD:A}" | md5 -q)
+    local md5
+    md5=$(echo "${PWD:A}" | _zsh_prioritize_cwd_history_md5)
 
-	echo "$ZSH_PRIORITIZE_CWD_HISTORY_DIR/.histrefs-$md5"
+    echo "$ZSH_PRIORITIZE_CWD_HISTORY_DIR/histrefs-$md5"
 }
 
 # Prints to STDOUT up to 1000 of the last history entries that were
 # executed in the current working directory
 _zsh_prioritize_cwd_history_cwd_hist_entries() {
-	local histrefs=$(_zsh_prioritize_cwd_history_histrefs_for_cwd)
+    local histrefs
+    histrefs=$(_zsh_prioritize_cwd_history_histrefs_for_cwd)
 
-	[ -s "$histrefs" ] || return
+   	[ -s "$histrefs" ] || return
+
+    # shrink histrefs file to 1000 lines
+    tail -1000 "$histrefs" >| "${histrefs}.tmp" \
+        && mv -f "${histrefs}.tmp" "$histrefs"
 
 	# Build a grep pattern that will pick out from HISTFILE all
 	# history entries (that were saved with EXTENDED_HISTORY)
 	# referenced by the histrefs file
-	local pattern=$(
-		# Get last 1000 histrefs
-		tail -1000 "$histrefs" |
+    local pattern
+    pattern="$(awk 'NR>1 {printf "\\|"} { print "^: " $0 }' ORS='' "$histrefs")"
 
-		# Prepend ": " to timestamps
-		sed -e 's/^/\^: /' |
+    [ -n "$pattern" ] || return
 
-		# Join lines with a pipe delimiter
-		paste -s -d '\|' - |
-
-		# Format into grep `OR` with backslash pipe
-		sed -e 's/\|/\\\|/g'
-	)
-
-	grep "$pattern" "$HISTFILE"
+    grep -a "$pattern" < "$HISTFILE"
 }
 
 # Reads history entries executed in the current working directory into
 # the history list
 _zsh_prioritize_cwd_history_load_cwd_history() {
-	local histrefs=$(_zsh_prioritize_cwd_history_histrefs_for_cwd)
+    local histrefs
+    histrefs=$(_zsh_prioritize_cwd_history_histrefs_for_cwd)
 
 	[ -s "$histrefs" ] || return
 
@@ -93,11 +100,11 @@ _zsh_prioritize_cwd_history_load_cwd_history() {
 	# [ (valid_histrefs) ] || return
 
 	# Create a tmp file for use with `fc -R`
-	local template="$ZSH_PRIORITIZE_CWD_HISTORY_DIR/.tmphistXX"
-	local tmp_histfile=$(mktemp "$template")
+    local tmp_histfile
+    tmp_histfile=$(mktemp -t)
 
 	# Copy history entries executed in this directory to tmp file
-	_zsh_prioritize_cwd_history_cwd_hist_entries > "$tmp_histfile"
+	_zsh_prioritize_cwd_history_cwd_hist_entries >| "$tmp_histfile"
 
 	# Read the history entries from the tmp file
 	fc -R "$tmp_histfile"
@@ -136,11 +143,12 @@ _zsh_prioritize_cwd_history_cwd_changed() {
 
 # Save a histref every time we save something to history
 _zsh_prioritize_cwd_history_addhistory() {
-	local histrefs=$(_zsh_prioritize_cwd_history_histrefs_for_cwd)
+    local histrefs
+    histrefs=$(_zsh_prioritize_cwd_history_histrefs_for_cwd)
 
 	[ -d "$ZSH_PRIORITIZE_CWD_HISTORY_DIR" ] || mkdir -p "$ZSH_PRIORITIZE_CWD_HISTORY_DIR"
 
-	echo "$(date +%s)" >> "$histrefs"
+    date +%s >>| "$histrefs"
 }
 
 autoload -Uz add-zsh-hook

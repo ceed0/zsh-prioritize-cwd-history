@@ -93,21 +93,6 @@ When reporting an issue, please include:
     ```
 
 
-## Development
-
-### Build Process
-
-Edit the source files in `src/`. Run `make` to build `zsh-prioritize-cwd-history.zsh` from those source files.
-
-
-### Pull Requests
-
-Pull requests are welcome! If you send a pull request, please:
-
-- Match the existing coding conventions.
-- Include helpful comments to keep the barrier-to-entry low for people new to the project.
-
-
 ## License
 
 This project is licensed under [MIT license](http://opensource.org/licenses/MIT).

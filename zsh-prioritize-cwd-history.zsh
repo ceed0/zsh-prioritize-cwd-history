@@ -44,7 +44,7 @@ ZSH_PRIORITIZE_CWD_HISTORY_DIR="$HOME/.zsh_prioritize_cwd_history"
 
 # Use an appropriate md5 command (md5 is BSD, md5sum is GNU),
 # whichever is actually available
-zmodload zsh/parameter
+zmodload -F zsh/parameter +p:commands
 _zsh_prioritize_cwd_history_md5() {
 	if (( $+commands[md5] )); then
 		md5 -q
